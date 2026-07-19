@@ -19,3 +19,6 @@ public/models/
 .claude/
 .agents/
 .playwright-cli/
+
+# 文档目录：仅本地留档，不纳入发布
+/doc/
