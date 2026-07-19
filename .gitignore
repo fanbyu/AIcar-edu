@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 开发/构建日志
+*.log
+*.err
+
+# 环境变量（保留模板 .env.example）
+.env
+.env.*
+!.env.example
+
+# 预训练模型权重：遵循各自原项目许可，不纳入源码仓库
+public/models/
+
+# 工具 / Agent 目录
+.codebuddy/
+.claude/
+.agents/
+.playwright-cli/

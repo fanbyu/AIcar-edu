@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    // tsc -b 会编译 vite.config.ts 做类型检查；产物输出到缓存目录，
+    // 避免在根目录生成 vite.config.js 影子文件（Vite 解析 .js 优先于 .ts，会导致改动 .ts 不生效）
+    "outDir": "./node_modules/.cache/tsconfig-node",
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig-node/tsconfig.node.tsbuildinfo"
+  },
+  "include": ["vite.config.ts"]
+}

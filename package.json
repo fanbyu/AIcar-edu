@@ -1,0 +1,49 @@
+{
+  "name": "smart-car-ai-edu",
+  "private": false,
+  "version": "1.0.0",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc -b --force",
+    "deploy:cloudbase": "tcb hosting deploy dist -e YOUR_ENV_ID",
+    "download:yolo-model": "powershell -ExecutionPolicy Bypass -File scripts/download-yolo-model.ps1",
+    "download:yolo-world": "powershell -ExecutionPolicy Bypass -File scripts/download-yolo-world.ps1"
+  },
+  "dependencies": {
+    "@cloudbase/js-sdk": "^3.6.3",
+    "@monaco-editor/react": "^4.6.0",
+    "@teachablemachine/image": "^0.8.5",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow-models/mobilenet": "^2.1.1",
+    "@tensorflow-models/pose-detection": "^2.1.3",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.22.0",
+    "@tensorflow/tfjs-converter": "^4.22.0",
+    "clsx": "^2.1.1",
+    "idb": "^8.0.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.453.0",
+    "monaco-editor": "^0.52.2",
+    "onnxruntime-web": "^1.27.0",
+    "pyodide": "^0.26.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@types/web-bluetooth": "^0.0.21",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}
