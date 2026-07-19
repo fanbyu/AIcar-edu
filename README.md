@@ -56,4 +56,5 @@ npm run download:yolo-world
 ## 致谢
 
 - 太原五中范保玉老师制作
+- 本项目参考了上海 汤铭 老师的网站、教学视频和书籍
 - TensorFlow.js、ONNX Runtime Web、Pyodide、CloudBase 等开源社区

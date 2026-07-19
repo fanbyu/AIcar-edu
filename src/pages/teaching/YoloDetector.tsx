@@ -6,7 +6,7 @@ import { useBluetooth } from '@/features/bluetooth/useBluetooth';
 import { Card, Chip } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
-import type { CarCommand } from '@/features/bluetooth/esp32Protocol';
+import { driveCommandToLabel, encodeLabel, type CarCommand } from '@/features/bluetooth/esp32Protocol';
 import { cn } from '@/lib/utils';
 import {
   buildDemoScene,
@@ -32,6 +32,8 @@ export function YoloDetector() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
+  // 最近一次通过蓝牙广播的最高优先级分类标签（用于界面回显）
+  const [lastSentLabel, setLastSentLabel] = useState<string | null>(null);
 
   // 检测引擎：coco-ssd（TF.js）基线 vs YOLO-World（ort-web）开放词汇。
   const [engine, setEngine] = useState<DetectorEngine>('tfjs-coco');
@@ -167,6 +169,17 @@ export function YoloDetector() {
     [decision]
   );
 
+  // 连接蓝牙后，广播一次四分类标签（Forward/Left/Right/Stop）；无决策或离线则跳过
+  const broadcastDec = useCallback(
+    (dec: DrivingDecision | null) => {
+      if (!dec || bluetooth.state !== 'connected') return;
+      const label = driveCommandToLabel(dec.command);
+      setLastSentLabel(dec.trigger ? `${label}（${dec.trigger.labelZh}）` : label);
+      bluetooth.sendText(encodeLabel(label));
+    },
+    [bluetooth, setLastSentLabel]
+  );
+
   const handleDetectSource = useCallback(
     async (input: DetectInput) => {
       setError(null);
@@ -184,7 +197,8 @@ export function YoloDetector() {
         };
         const w = src.videoWidth ?? src.naturalWidth ?? src.width;
         const h = src.videoHeight ?? src.naturalHeight ?? src.height;
-        renderFrame(src, w, h, dets);
+        const dec = renderFrame(src, w, h, dets);
+        broadcastDec(dec);
       } catch (e) {
         setError('检测失败：' + (e as Error).message);
       } finally {
@@ -197,8 +211,9 @@ export function YoloDetector() {
   const handleDemo = useCallback(() => {
     setError(null);
     const { canvas, detections: demoDetections } = buildDemoScene();
-    renderFrame(canvas, canvas.width, canvas.height, demoDetections);
-  }, [renderFrame]);
+    const dec = renderFrame(canvas, canvas.width, canvas.height, demoDetections);
+    broadcastDec(dec);
+  }, [renderFrame, broadcastDec]);
 
   const handleImage = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,6 +242,11 @@ export function YoloDetector() {
     try {
       const dets = await runDetect({ htmlVideo: video });
       const dec = renderFrame(video, video.videoWidth, video.videoHeight, dets);
+
+      // 连接蓝牙后：持续把“当前检测推理的四分类标签”广播给小车（每帧一次）
+      broadcastDec(dec);
+
+      // 仅在“自动驾驶决策”步骤、且指令变化时，下发运动指令（F/L/R/S）
       if (
         dec &&
         step === 'decide' &&
@@ -514,13 +534,21 @@ export function YoloDetector() {
             <h3 className="font-semibold">把“看到”变成“行动”</h3>
             <p className="mt-2 text-sm text-slate-600">
               在「自动驾驶决策」一步开启蓝牙并连上小车，每 600ms 检测一次；
-              当决策指令变化时，自动下发到 ESP32（***REMOVED***）。
+              连接后会在实时检测中<strong>持续把“当前检测推理的四分类标签”通过蓝牙广播</strong>给小车，
+              四分类即驾驶决策：<code className="rounded bg-slate-100 px-1">Forward</code> /
+              <code className="rounded bg-slate-100 px-1">Left</code> /
+              <code className="rounded bg-slate-100 px-1">Right</code> /
+              <code className="rounded bg-slate-100 px-1">Stop</code>
+              （格式 <code className="rounded bg-slate-100 px-1">***REMOVED***Forward\n</code>）；
+              当决策指令变化时，另自动下发运动指令到 ESP32（***REMOVED***）。
             </p>
             <p className="mt-3 text-sm text-slate-600">
               建议先用「示例场景」确认决策方向正确，再切到实时摄像头，并始终把车放在安全区域调试。
             </p>
             {bluetooth.state === 'connected' ? (
-              <p className="mt-3 text-xs text-green-600">已连接小车，指令自动下发（变化时发送）。</p>
+              <p className="mt-3 text-xs text-green-600">
+                已连接小车：运动指令按变化下发，分类标签持续广播（当前：{lastSentLabel ?? '—'}）。
+              </p>
             ) : (
               <p className="mt-3 text-xs text-amber-600">
                 未连接：请先在左侧「连接小车」中配对蓝牙，再到「自动驾驶决策」开启实时检测。

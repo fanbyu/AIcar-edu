@@ -17,6 +17,7 @@ import {
 import { TrainingChart, type Point } from '@/features/train/trainingVis';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
+import { driveCommandToLabel, encodeLabel } from '@/features/bluetooth/esp32Protocol';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -454,7 +455,10 @@ export function MlpTrainer() {
       右: 'R',
       停: 'S',
     };
-    if (bt.state === 'connected') bt.send(map[r.label], 120);
+    if (bt.state === 'connected') {
+      bt.send(map[r.label], 120);
+      bt.sendText(encodeLabel(driveCommandToLabel(map[r.label])));
+    }
   }
 
   /** 实时图像分类：定时抓取摄像头帧并推理，更新四类概率 */
@@ -472,7 +476,10 @@ export function MlpTrainer() {
       右: 'R',
       停: 'S',
     };
-    if (bt.state === 'connected') bt.send(map[top.label], 120);
+    if (bt.state === 'connected') {
+      bt.send(map[top.label], 120);
+      bt.sendText(encodeLabel(driveCommandToLabel(map[top.label])));
+    }
   }
 
   function toggleLive() {

@@ -4,6 +4,7 @@ import {
   NUS_TX_CHAR,
   NUS_RX_CHAR,
   encodeCommand,
+  encodeLabel,
   decodeTelemetry,
   type CarCommand,
   type CarTelemetry,
@@ -170,6 +171,31 @@ export class BleController {
       } catch (e) {
         this.callbacks.onState('error', '指令发送失败');
         void e;
+      }
+    }
+  }
+
+  /**
+   * 发送任意文本（如检测标签广播 ***REMOVED***...）。通过 TX 特征原样下发，
+   * 用于把当前检测的最高优先级分类标签持续抛给小车。
+   */
+  async sendText(text: string): Promise<void> {
+    if (!this.txChar) {
+      this.callbacks.onState('error', '未连接，无法发送');
+      return;
+    }
+    const data = new TextEncoder().encode(text);
+    try {
+      if (this.txChar.properties.writeWithoutResponse) {
+        await this.txChar.writeValueWithoutResponse(data);
+      } else {
+        await this.txChar.writeValue(data);
+      }
+    } catch {
+      try {
+        await this.txChar.writeValueWithoutResponse(data);
+      } catch {
+        this.callbacks.onState('error', '标签发送失败');
       }
     }
   }
