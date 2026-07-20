@@ -22,3 +22,6 @@ public/models/
 
 # 文档目录：仅本地留档，不纳入发布
 /doc/
+
+# 蓝牙私有协议（真实 ESP32 固件契约，不纳入公开仓库）
+src/features/bluetooth/esp32Protocol.local.ts

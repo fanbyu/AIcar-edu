@@ -534,13 +534,8 @@ export function YoloDetector() {
             <h3 className="font-semibold">把“看到”变成“行动”</h3>
             <p className="mt-2 text-sm text-slate-600">
               在「自动驾驶决策」一步开启蓝牙并连上小车，每 600ms 检测一次；
-              连接后会在实时检测中<strong>持续把“当前检测推理的四分类标签”通过蓝牙广播</strong>给小车，
-              四分类即驾驶决策：<code className="rounded bg-slate-100 px-1">Forward</code> /
-              <code className="rounded bg-slate-100 px-1">Left</code> /
-              <code className="rounded bg-slate-100 px-1">Right</code> /
-              <code className="rounded bg-slate-100 px-1">Stop</code>
-              （格式 <code className="rounded bg-slate-100 px-1">***REMOVED***Forward\n</code>）；
-              当决策指令变化时，另自动下发运动指令到 ESP32（***REMOVED***）。
+              连接后会在实时检测中<strong>持续把当前检测推理的驾驶决策通过蓝牙广播</strong>给小车；
+              当决策变化时，会自动下发对应的运动控制指令。
             </p>
             <p className="mt-3 text-sm text-slate-600">
               建议先用「示例场景」确认决策方向正确，再切到实时摄像头，并始终把车放在安全区域调试。

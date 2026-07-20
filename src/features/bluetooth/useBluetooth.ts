@@ -50,7 +50,7 @@ export function useBluetooth() {
     []
   );
 
-  /** 发送任意文本（如检测标签广播 ***REMOVED***...） */
+  /** 发送任意文本（如检测标签广播） */
   const sendText = useCallback((text: string) => {
     controllerRef.current?.sendText(text);
   }, []);

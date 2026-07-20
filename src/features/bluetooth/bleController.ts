@@ -176,7 +176,7 @@ export class BleController {
   }
 
   /**
-   * 发送任意文本（如检测标签广播 ***REMOVED***...）。通过 TX 特征原样下发，
+   * 发送任意文本（如检测标签广播）。通过 TX 特征原样下发，
    * 用于把当前检测的最高优先级分类标签持续抛给小车。
    */
   async sendText(text: string): Promise<void> {
