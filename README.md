@@ -52,11 +52,14 @@ npm run download:yolo-world
 ## 贡献
 
 欢迎提交 Issue 与 Pull Request。提交贡献即表示你同意以 AGPL-3.0-or-later 协议授权你的贡献。
+## 作者
+
+- 太原五中范保玉老师
 
 ## 致谢
 
-- 太原五中范保玉老师制作
 - 本项目参考了上海松江区青少年综合实践教育中心 汤铭老师的网站、教学视频和书籍
 - 感谢学校领导、老师和同学的支持与鼓励，希望这个项目为120年校庆献上一份礼物
-- 祝贺西班牙夺冠
+- 感谢microblocks 线上分享会 （B站）
 - TensorFlow.js、ONNX Runtime Web、Pyodide、CloudBase 等开源社区
+- 祝贺西班牙夺冠
