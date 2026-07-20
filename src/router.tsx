@@ -11,6 +11,7 @@ import { MlpTrainer } from '@/pages/teaching/MlpTrainer';
 import { CnnBuilder } from '@/pages/teaching/CnnBuilder';
 import { YoloDetector } from '@/pages/teaching/YoloDetector';
 import AiTrainingPlatform from '@/pages/teaching/AiTrainingPlatform';
+import { AboutPage } from '@/pages/AboutPage';
 
 export const router = createHashRouter([
   {
@@ -27,6 +28,7 @@ export const router = createHashRouter([
       { path: 'knowledge', element: <AiKnowledgePage /> },
       { path: 'playground', element: <PlaygroundPage /> },
       { path: 'community', element: <CommunityPage /> },
+      { path: 'about', element: <AboutPage /> },
     ],
   },
 ]);

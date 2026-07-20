@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { Link } from 'react-router-dom';
+
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-slate-200/60 bg-white/60">
@@ -26,12 +28,17 @@ export function Footer() {
           >
             源代码
           </a>
-          <a className="hover:text-brand-600" href="#">
+          <a
+            className="hover:text-brand-600"
+            href="https://gitee.com/fff1969/AIcar-edu"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             使用文档
           </a>
-          <a className="hover:text-brand-600" href="#">
+          <Link className="hover:text-brand-600" to="/about">
             致谢
-          </a>
+          </Link>
         </div>
       </div>
     </footer>
