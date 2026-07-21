@@ -18,15 +18,37 @@ const localMods = import.meta.glob('./esp32Protocol.local.ts', { eager: true });
 const local: Record<string, any> =
   (localMods as Record<string, any>)['./esp32Protocol.local.ts'] ?? {};
 
-// 若本地私有协议未提供某导出，则使用以下占位（不含真实固件契约）。
-const PLACEHOLDER_UUID = '00000000-0000-0000-0000-000000000000';
+/**
+ * 真实小车运行 MicroBlocks BLE 固件（串口透传）。GATT 拓扑（与官方参考页一致）：
+ *   - 服务:   bb370000-b922-4018-8e74-e14824b3a638          (MicroBlocks BLE service)
+ *   - 写特征: bb37a002-b922-4018-8e74-e14824b3a638          (板子接收，主机写)
+ *   - 读特征: bb37a003-b922-4018-8e74-e14824b3a638          (板子上送，主机 notify)
+ * 下行指令统一封装为 MicroBlocks 广播帧（0x1B 长消息），广播名为单词：
+ *   go / left / right / stop / back / kick
+ */
+export const MICROBLOCKS_SERVICE =
+  (local.MICROBLOCKS_SERVICE as string) ?? 'bb370000-b922-4018-8e74-e14824b3a638';
+export const MICROBLOCKS_RX_CHAR =
+  (local.MICROBLOCKS_RX_CHAR as string) ?? 'bb37a002-b922-4018-8e74-e14824b3a638';
+export const MICROBLOCKS_TX_CHAR =
+  (local.MICROBLOCKS_TX_CHAR as string) ?? 'bb37a003-b922-4018-8e74-e14824b3a638';
 
-export const NUS_SERVICE = (local.NUS_SERVICE as string) ?? PLACEHOLDER_UUID;
-export const NUS_TX_CHAR = (local.NUS_TX_CHAR as string) ?? PLACEHOLDER_UUID;
-export const NUS_RX_CHAR = (local.NUS_RX_CHAR as string) ?? PLACEHOLDER_UUID;
+// 向后兼容别名：NUS_TX_CHAR 为主机写目标（=板子 RX），NUS_RX_CHAR 为主机读源（=板子 TX）
+export const NUS_SERVICE = MICROBLOCKS_SERVICE;
+export const NUS_TX_CHAR = MICROBLOCKS_RX_CHAR;
+export const NUS_RX_CHAR = MICROBLOCKS_TX_CHAR;
 
-/** 指令：前进/左转/右转/停止（占位骨架，真实字符见私有协议） */
+/** 指令：前进/左转/右转/停止（内部枚举；实际下发的广播名见 driveBroadcast）。 */
 export type CarCommand = 'F' | 'L' | 'R' | 'S';
+
+/**
+ * 把内部指令映射为下发给板子的广播名（MicroBlocks `when I receive` 监听的单词）。
+ * 与官方参考页一致：go / left / right / stop（另支持 back / kick）。
+ */
+export function driveBroadcast(cmd: CarCommand): string {
+  if (local.driveBroadcast) return local.driveBroadcast(cmd);
+  return cmd === 'F' ? 'go' : cmd === 'L' ? 'left' : cmd === 'R' ? 'right' : 'stop';
+}
 
 export interface CarTelemetry {
   bat: number;

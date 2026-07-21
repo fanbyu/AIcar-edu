@@ -22,17 +22,13 @@ export function Footer() {
           </a>
           <a
             className="hover:text-brand-600"
-            href="https://gitee.com/fff1969/AIcar-edu"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
           >
             源代码
           </a>
           <a
             className="hover:text-brand-600"
-            href="https://gitee.com/fff1969/AIcar-edu"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
           >
             使用文档
           </a>

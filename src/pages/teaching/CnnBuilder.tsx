@@ -35,7 +35,6 @@ import {
 import { TrainingChart, type Point } from '@/features/train/trainingVis';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
-import { driveCommandToLabel, encodeLabel } from '@/features/bluetooth/esp32Protocol';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -402,8 +401,7 @@ export function CnnBuilder() {
       停: 'S',
     };
     if (bt.state === 'connected') {
-      bt.send(map[top.label], 120);
-      bt.sendText(encodeLabel(driveCommandToLabel(map[top.label])));
+      bt.send(map[top.label]);
     }
   }
 
@@ -422,8 +420,7 @@ export function CnnBuilder() {
       停: 'S',
     };
     if (bt.state === 'connected') {
-      bt.send(map[top.label], 120);
-      bt.sendText(encodeLabel(driveCommandToLabel(map[top.label])));
+      bt.send(map[top.label]);
     }
   }
 

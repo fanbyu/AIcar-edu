@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
 import { COMMAND_LABELS, type CarCommand } from '@/features/bluetooth/esp32Protocol';
+import { describeBoardMessage } from '@/features/bluetooth/microblocksProtocol';
 import { Button } from '@/components/ui/Button';
-import { Wifi, WifiOff, Bluetooth, RotateCw, BatteryCharging } from 'lucide-react';
+import { Wifi, WifiOff, Bluetooth, RotateCw, BatteryCharging, Square, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const COMMANDS: CarCommand[] = ['F', 'L', 'R', 'S'];
@@ -78,13 +79,23 @@ export function BluetoothPanel({ compact = false }: { compact?: boolean }) {
             {COMMANDS.map((c) => (
               <button
                 key={c}
-                onClick={() => bt.send(c, 120)}
+                onClick={() => bt.send(c)}
                 className="rounded-xl border border-slate-200 bg-white py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-brand-300 hover:bg-brand-50 active:scale-95"
               >
                 {COMMAND_LABELS[c]}
               </button>
             ))}
           </div>
+
+          <div className="mt-2 flex gap-2">
+            <Button variant="ghost" size="sm" onClick={bt.stopAll} className="text-rose-600">
+              <Square className="h-3.5 w-3.5" /> 全部停止
+            </Button>
+            <Button variant="ghost" size="sm" onClick={bt.ping}>
+              <Activity className="h-3.5 w-3.5" /> 心跳
+            </Button>
+          </div>
+
           <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <span className="flex items-center gap-1">
               <BatteryCharging className="h-3.5 w-3.5 text-emerald-500" />
@@ -96,12 +107,73 @@ export function BluetoothPanel({ compact = false }: { compact?: boolean }) {
               错误码 {bt.telemetry.err}
             </span>
           </div>
+
+          <FeedbackBox />
         </>
       )}
 
       {compact && bt.deviceName && (
         <p className="mt-2 text-xs text-slate-400">设备：{bt.deviceName}</p>
       )}
+    </div>
+  );
+}
+
+const statusStyle: Record<string, { dot: string; text: string; label: string }> = {
+  ok: { dot: 'bg-emerald-500', text: 'text-emerald-600', label: '成功' },
+  error: { dot: 'bg-rose-500', text: 'text-rose-600', label: '失败' },
+  info: { dot: 'bg-slate-300', text: 'text-slate-500', label: '信息' },
+};
+
+function fmtTime(t: number): string {
+  const d = new Date(t);
+  return d.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+/** 执行反馈面板：展示板子上行消息（任务启动/完成/输出/错误等）。 */
+function FeedbackBox() {
+  const { feedback, feedbackLog, clearFeedback } = useBluetooth();
+  const st = statusStyle[feedback?.status ?? 'info'];
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-600">执行反馈（小车 → IDE）</span>
+        <button
+          onClick={clearFeedback}
+          className="text-[11px] text-slate-400 hover:text-slate-600"
+        >
+          清空
+        </button>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 text-xs">
+        <span className={cn('h-2.5 w-2.5 rounded-full', st.dot)} />
+        <span className={cn('font-semibold', st.text)}>
+          {feedback ? st.label : '暂无'}
+        </span>
+        {feedback && (
+          <span className="truncate text-slate-500">
+            {describeBoardMessage(feedback)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-lg bg-white/70 p-2 font-mono text-[11px] text-slate-500">
+        {feedbackLog.length === 0 && <p className="text-slate-400">尚未收到小车反馈…</p>}
+        {[...feedbackLog].reverse().map((m, i) => {
+          const s = statusStyle[m.status];
+          return (
+            <div key={feedbackLog.length - i} className="flex items-start gap-2">
+              <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', s.dot)} />
+              <span className="shrink-0 text-slate-300">{fmtTime(m.time)}</span>
+              <span className="truncate">
+                [{m.opName}] {describeBoardMessage(m)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

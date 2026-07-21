@@ -6,7 +6,7 @@ import { useBluetooth } from '@/features/bluetooth/useBluetooth';
 import { Card, Chip } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
-import { driveCommandToLabel, encodeLabel, type CarCommand } from '@/features/bluetooth/esp32Protocol';
+import { driveCommandToLabel, type CarCommand } from '@/features/bluetooth/esp32Protocol';
 import { cn } from '@/lib/utils';
 import {
   buildDemoScene,
@@ -169,13 +169,16 @@ export function YoloDetector() {
     [decision]
   );
 
-  // 连接蓝牙后，广播一次四分类标签（Forward/Left/Right/Stop）；无决策或离线则跳过
+  // 连接蓝牙后，通过 MicroBlocks 广播（0x1B）把驾驶决策下发给小车；
+  // 仅在指令变化时下发，避免自动驾驶每帧重复广播。
   const broadcastDec = useCallback(
     (dec: DrivingDecision | null) => {
       if (!dec || bluetooth.state !== 'connected') return;
       const label = driveCommandToLabel(dec.command);
       setLastSentLabel(dec.trigger ? `${label}（${dec.trigger.labelZh}）` : label);
-      bluetooth.sendText(encodeLabel(label));
+      if (lastSent.current === dec.command) return; // 指令未变则节流
+      lastSent.current = dec.command;
+      bluetooth.send(dec.command);
     },
     [bluetooth, setLastSentLabel]
   );
@@ -243,19 +246,8 @@ export function YoloDetector() {
       const dets = await runDetect({ htmlVideo: video });
       const dec = renderFrame(video, video.videoWidth, video.videoHeight, dets);
 
-      // 连接蓝牙后：持续把“当前检测推理的四分类标签”广播给小车（每帧一次）
+      // 连接蓝牙后：把当前驾驶决策通过 MicroBlocks 广播（0x1B）下发给小车（内部已节流）
       broadcastDec(dec);
-
-      // 仅在“自动驾驶决策”步骤、且指令变化时，下发运动指令（F/L/R/S）
-      if (
-        dec &&
-        step === 'decide' &&
-        bluetooth.state === 'connected' &&
-        dec.command !== lastSent.current
-      ) {
-        lastSent.current = dec.command;
-        bluetooth.send(dec.command, 150);
-      }
     } catch (e) {
       setError('检测失败：' + (e as Error).message);
       if (liveTimer.current) {

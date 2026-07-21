@@ -12,7 +12,6 @@ import JSZip from 'jszip';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
 import AiTrainingPlatform from './AiTrainingPlatform';
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
-import { carClassToEn, encodeLabel } from '@/features/bluetooth/esp32Protocol';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -384,9 +383,7 @@ export function KnnTrainer() {
       停: 'S',
     };
     if (bt.state === 'connected') {
-      bt.send(map[r.label], 120);
-      // 同时广播四分类标签（Forward/Left/Right/Stop）
-      bt.sendText(encodeLabel(carClassToEn(r.label)));
+      bt.send(map[r.label]);
     }
   }
 

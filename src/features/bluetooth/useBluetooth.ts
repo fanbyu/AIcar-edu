@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { BleController, type BleState } from './bleController';
 import { useBluetoothStore } from './bluetoothStore';
 import type { CarCommand } from './esp32Protocol';
+import type { BoardMessage } from './microblocksProtocol';
 
 /**
  * 连接状态机 Hook：封装 BleController 生命周期，与 bluetoothStore 联动。
@@ -17,6 +18,7 @@ export function useBluetooth() {
       onState: (s: BleState, info?: string) => store.setState(s, info),
       onTelemetry: (t) => store.setTelemetry(t),
       onReconnecting: (ms) => store.setReconnecting(ms),
+      onFeedback: (msg: BoardMessage) => store.pushFeedback(msg),
     });
     controllerRef.current = controller;
 
@@ -55,6 +57,21 @@ export function useBluetooth() {
     controllerRef.current?.sendText(text);
   }, []);
 
+  /** 停止板子全部任务（紧急停车） */
+  const stopAll = useCallback(() => {
+    controllerRef.current?.stopAll();
+  }, []);
+
+  /** 启动板子全部任务 */
+  const startAll = useCallback(() => {
+    controllerRef.current?.startAll();
+  }, []);
+
+  /** 心跳探测 */
+  const ping = useCallback(() => {
+    controllerRef.current?.ping();
+  }, []);
+
   return {
     ...store,
     isSupported: controllerRef.current?.isSupported ?? false,
@@ -63,5 +80,8 @@ export function useBluetooth() {
     disconnect,
     send,
     sendText,
+    stopAll,
+    startAll,
+    ping,
   };
 }

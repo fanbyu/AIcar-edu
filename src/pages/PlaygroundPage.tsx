@@ -8,7 +8,6 @@ import { runPython } from '@/features/code/pythonSandbox';
 import { useCarSim } from '@/features/sim/useCarSim';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
-import { driveCommandToLabel, encodeLabel } from '@/features/bluetooth/esp32Protocol';
 import { Card, Chip } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -65,8 +64,7 @@ export function PlaygroundPage() {
   function drive(c: 'F' | 'L' | 'R' | 'S') {
     setCommand(c);
     if (linked && bt.state === 'connected') {
-      bt.send(c, 120);
-      bt.sendText(encodeLabel(driveCommandToLabel(c)));
+      bt.send(c);
     }
   }
 
