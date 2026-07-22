@@ -20,14 +20,14 @@ const local: Record<string, any> =
 
 /**
  * 真实小车运行 MicroBlocks BLE 固件（串口透传）。GATT 拓扑（与官方参考页一致）：
- *   - 服务:   bb370000-b922-4018-8e74-e14824b3a638          (MicroBlocks BLE service)
+ *   - 服务:   bb37a001-b922-4018-8e74-e14824b3a638          (MicroBlocks BLE service)
  *   - 写特征: bb37a002-b922-4018-8e74-e14824b3a638          (板子接收，主机写)
  *   - 读特征: bb37a003-b922-4018-8e74-e14824b3a638          (板子上送，主机 notify)
  * 下行指令统一封装为 MicroBlocks 广播帧（0x1B 长消息），广播名为单词：
  *   go / left / right / stop / back / kick
  */
 export const MICROBLOCKS_SERVICE =
-  (local.MICROBLOCKS_SERVICE as string) ?? 'bb370000-b922-4018-8e74-e14824b3a638';
+  (local.MICROBLOCKS_SERVICE as string) ?? 'bb37a001-b922-4018-8e74-e14824b3a638';
 export const MICROBLOCKS_RX_CHAR =
   (local.MICROBLOCKS_RX_CHAR as string) ?? 'bb37a002-b922-4018-8e74-e14824b3a638';
 export const MICROBLOCKS_TX_CHAR =

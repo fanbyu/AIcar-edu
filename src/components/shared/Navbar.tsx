@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NavLink } from 'react-router-dom';
-import { Home, GraduationCap, Brain, Code2, Users } from 'lucide-react';
+import { Home, GraduationCap, Brain, Code2, Users, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useAuthModalStore } from '@/features/auth/authModalStore';
@@ -46,6 +46,15 @@ export function Navbar() {
               {label}
             </NavLink>
           ))}
+          <a
+            href="https://microblocks.fun/run-pilot/microblocks.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <ExternalLink className="h-4 w-4" />
+            在线编程
+          </a>
         </nav>
         <div className="flex items-center gap-2">
           {isAuthenticated ? (
@@ -78,10 +87,19 @@ export function Navbar() {
             }
           >
             <Icon className="h-5 w-5" />
-            {label.replace('智能驾驶', '').replace('AI ', '')}
+              {label.replace('智能驾驶', '').replace('AI ', '')}
           </NavLink>
-        ))}
-      </nav>
+          ))}
+          <a
+            href="https://microblocks.fun/run-pilot/microblocks.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] text-slate-500"
+          >
+            <ExternalLink className="h-5 w-5" />
+            在线编程
+          </a>
+        </nav>
     </header>
   );
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Video, Upload, Play, Square, CheckCircle2, CameraOff, Trash2 } from 'lucide-react';
+import { Check, Video, Upload, Play, Square, CheckCircle2, CameraOff, Trash2, Radio } from 'lucide-react';
 import { useCamera } from '@/features/train/useCamera';
 import { FloatingPreview } from '@/components/shared/FloatingPreview';
 import { useMobileNet } from '@/features/train/useMobileNet';
@@ -12,11 +12,20 @@ import JSZip from 'jszip';
 import { BluetoothPanel } from '@/components/shared/BluetoothPanel';
 import AiTrainingPlatform from './AiTrainingPlatform';
 import { useBluetooth } from '@/features/bluetooth/useBluetooth';
+import { useBluetoothStore } from '@/features/bluetooth/bluetoothStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
 const STEPS = ['采集', '训练', '验证', '连接小车'];
+
+/** 内部指令 → 下发给板子的广播命令（经 driveBroadcast 转成 go/left/right/stop）。 */
+const DRIVE_MAP: Record<CarClass, 'F' | 'L' | 'R' | 'S'> = {
+  前进: 'F',
+  左: 'L',
+  右: 'R',
+  停: 'S',
+};
 
 /** 由帧/图片生成 224 原始图（导出用）与 112 缩略图（预览用） */
 function makeImages(src: CanvasImageSource): { img: string; thumb: string } {
@@ -32,7 +41,12 @@ function makeImages(src: CanvasImageSource): { img: string; thumb: string } {
 
 export function KnnTrainer() {
   const camera = useCamera();
-  const { ready, error: tfError, infer } = useMobileNet();
+  // 推理后端：默认 cpu（不占 GPU，与同芯片蓝牙最稳）；如硬件支持可切 webgl 提速。
+  const [inferBackend, setInferBackend] = useState<'webgl' | 'cpu'>('cpu');
+  const { ready, error: tfError, engine, usedBackend, workerError, infer } = useMobileNet(undefined, {
+    workerInfer: true,
+    backend: inferBackend,
+  });
   const classifier = useRef(new KnnClassifier([...CLASSES]));
   const [activeClass, setActiveClass] = useState<CarClass>('前进');
   const [counts, setCounts] = useState<Record<string, number>>(
@@ -51,6 +65,10 @@ export function KnnTrainer() {
   const lastVecRef = useRef<Float32Array | null>(null);
   const [kScan, setKScan] = useState<{ k: number; label: CarClass; confidence: number }[]>([]);
   const bt = useBluetooth();
+  // 实时识别（自动驾驶）：开启后，实时循环会按 KNN 预测结果下发指令
+  const [live, setLive] = useState(false);
+  const liveRef = useRef(false);
+  const lastSentRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // 数据 / 模型 导入的隐藏文件输入框
   const dataFileRef = useRef<HTMLInputElement | null>(null);
@@ -63,7 +81,11 @@ export function KnnTrainer() {
   // 实时预览帧的余弦相似度 Top 4
   const [liveSim, setLiveSim] = useState<{ label: CarClass; sim: number }[]>([]);
   const flashTimer = useRef<number>();
-  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(flashTimer.current);
+    };
+  }, []);
 
   // 启动时从 IndexedDB 恢复已采集样本
   useEffect(() => {
@@ -82,9 +104,14 @@ export function KnnTrainer() {
     });
   }, []);
 
-  // 实时余弦相似度：摄像头开启且模型就绪时，持续把当前帧与已存样本比较
+  // 实时余弦相似度：仅在「实时识别(自动驾驶)」开启时持续推理；否则不后台常驻推理，
+  // 避免无谓的 GPU 负载与同芯片蓝牙发生射频/总线冲突导致断连。
   useEffect(() => {
     if (!camera.active || !ready) {
+      setLiveSim([]);
+      return;
+    }
+    if (!live) {
       setLiveSim([]);
       return;
     }
@@ -96,19 +123,40 @@ export function KnnTrainer() {
       if (frame) {
         try {
           const vec = await infer(frame);
-          if (active) setLiveSim(classifier.current.nearest(vec, 4));
+          if (!active) return;
+          setLiveSim(classifier.current.nearest(vec, 4));
+          // 自动驾驶：开启且已连接时，按 KNN 预测结果下发指令（仅指令变化时发送）。
+          // 用 store.getState() 读取最新连接状态，避免闭包捕获到旧值。
+          if (liveRef.current && useBluetoothStore.getState().state === 'connected') {
+            const r = classifier.current.predict(vec);
+            const cmd = DRIVE_MAP[r.label];
+            if (lastSentRef.current !== cmd) {
+              lastSentRef.current = cmd;
+              await bt.send(cmd);
+            }
+          }
         } catch {
           /* ignore */
         }
       }
-      if (active) timer = window.setTimeout(tick, 600);
+      if (active) timer = window.setTimeout(tick, 1000);
     };
     timer = window.setTimeout(tick, 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [camera.active, ready]);
+  }, [camera.active, ready, live]);
+
+  // 自动驾驶运行时若蓝牙意外断开，自动暂停下发，避免断连后空发指令与状态混乱
+  useEffect(() => {
+    if (live && bt.state === 'disconnected') {
+      setLive(false);
+      liveRef.current = false;
+      lastSentRef.current = null;
+      setWarn('蓝牙连接已断开，自动驾驶已暂停。请重新连接小车后再开启「实时识别」。');
+    }
+  }, [live, bt.state]);
 
   // 训练即完成（KNN 无需训练过程）
   useEffect(() => {
@@ -361,7 +409,14 @@ export function KnnTrainer() {
     const frame = camera.captureFrame();
     if (!frame || !ready) return;
     setPredicting(true);
-    const vec = await infer(frame);
+    let vec: Float32Array;
+    try {
+      vec = await infer(frame);
+    } catch (err) {
+      console.error('[推理] 单张推理失败：', err);
+      setPredicting(false);
+      return;
+    }
     const r = classifier.current.predict(vec);
     setPred(r);
     lastVecRef.current = vec;
@@ -385,6 +440,27 @@ export function KnnTrainer() {
     if (bt.state === 'connected') {
       bt.send(map[r.label]);
     }
+  }
+
+  /**
+   * 开启/关闭实时识别（自动驾驶）。
+   * 真正的下发在上面的「实时余弦相似度」循环里完成——该循环本就以 600ms 运行，
+   * 当 liveRef 为真且已连接时，会按 KNN 预测结果下发指令（仅变化时发送）。
+   * 这样避免重复定时器，并始终读取最新连接状态。
+   */
+  function toggleLive() {
+    if (live) {
+      setLive(false);
+      liveRef.current = false;
+      lastSentRef.current = null;
+      return;
+    }
+    if (classifier.current.size === 0) {
+      setWarn('请先采集样本再开启实时识别');
+      return;
+    }
+    setLive(true);
+    liveRef.current = true;
   }
 
   return (
@@ -596,6 +672,70 @@ export function KnnTrainer() {
           <Card>
             <h2 className="font-semibold text-slate-800">③ 推理验证</h2>
 
+            {/* 推理引擎状态：直接显示当前是 Worker 还是主线程，用于诊断蓝牙断连 */}
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                  engine === 'worker'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : engine === 'main'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-500',
+                )}
+              >
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    engine === 'worker' ? 'bg-emerald-500' : engine === 'main' ? 'bg-amber-500' : 'bg-slate-400',
+                  )}
+                />
+                推理引擎：
+                {engine === 'worker'
+                  ? `Web Worker · ${(usedBackend ?? '?').toUpperCase()}`
+                  : engine === 'main'
+                    ? '主线程（易断连）'
+                    : '加载中…'}
+              </span>
+            </div>
+            {engine === 'worker' && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                <span>推理后端</span>
+                <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setInferBackend('cpu')}
+                    className={cn(
+                      'px-2 py-1 transition',
+                      inferBackend === 'cpu' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600',
+                    )}
+                  >
+                    CPU 稳
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInferBackend('webgl')}
+                    className={cn(
+                      'px-2 py-1 transition',
+                      inferBackend === 'webgl' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600',
+                    )}
+                  >
+                    WebGL 快
+                  </button>
+                </div>
+                <span className="text-slate-400">（切换会重载模型；蓝牙掉线请选 CPU）</span>
+              </div>
+            )}
+            {engine === 'main' && (
+              <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                推理已回退到<strong>主线程</strong>（Worker 未能启用
+                {workerError ? `：${workerError}` : ''}）。
+                主线程同步推理会持续占用事件循环，
+                <strong>实时 / 单张推理都可能导致蓝牙 supervision timeout 断连</strong>。
+                常见原因：浏览器不支持 module worker、静态托管返回的 JS MIME 类型不正确、或浏览器策略禁用了 Worker。
+              </div>
+            )}
+
             {/* K 值设置：帮助学生理解 k 对分类的影响 */}
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center justify-between">
@@ -627,7 +767,15 @@ export function KnnTrainer() {
               onClick={runInference}
               disabled={!ready || predicting || classifier.current.size === 0}
             >
-              <Play className="h-4 w-4" /> {predicting ? '推理中…' : '实时推理'}
+              <Play className="h-4 w-4" /> {predicting ? '推理中…' : '单张推理'}
+            </Button>
+            <Button
+              className="mt-2 w-full"
+              variant={live ? 'ghost' : 'primary'}
+              onClick={toggleLive}
+              disabled={!ready || classifier.current.size === 0}
+            >
+              <Radio className="h-4 w-4" /> {live ? '停止实时识别（自动驾驶）' : '开启实时识别（自动驾驶）'}
             </Button>
             {classifier.current.size === 0 && (
               <p className="mt-2 text-xs text-slate-400">请先采集样本再推理</p>
@@ -694,7 +842,8 @@ export function KnnTrainer() {
         </div>
       </div>
       <p className="mt-4 text-xs text-slate-400">
-        提示：KNN「训练」即记忆样本，采集足够图片后即可推理；连接小车后，推理结果会自动经蓝牙下发给 ESP32。
+        提示：KNN「训练」即记忆样本，采集足够图片后即可推理；连接小车并开启「实时识别（自动驾驶）」后，
+        每 1 秒识别一次并自动经蓝牙下发给 ESP32（前进→go / 左→left / 右→right / 停→stop），仅在指令变化时下发。
       </p>
       <AiTrainingPlatform />
     </div>

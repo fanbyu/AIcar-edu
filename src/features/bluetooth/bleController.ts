@@ -53,8 +53,17 @@ export class BleController {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private writeThrottleUntil = 0;
+  /**
+   * GATT 写入串行链：所有下行写入都排到这条 Promise 链上，
+   * 保证同一时刻「至多一个」writeValueWithoutResponse 在飞。
+   * 参考页（sjaiedu）用 sendInProgress 锁实现同样的互斥——
+   * 并发写同一特征是 Chrome Web Bluetooth 断连（NetworkError）的经典诱因。
+   */
+  private writeChain: Promise<void> = Promise.resolve();
   /** MicroBlocks 上行二进制帧流式解析器。 */
   private feedbackParser = new FrameParser();
+  /** 心跳保活定时器：连接期间周期性 ping，防止空闲/推理间隙 supervision timeout 断连。 */
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(callbacks: BleControllerCallbacks) {
     this.callbacks = callbacks;
@@ -124,7 +133,27 @@ export class BleController {
     await this.rxChar.startNotifications();
     this.rxChar.addEventListener('characteristicvaluechanged', this.handleData);
     this.reconnectAttempts = 0;
+    // 连接握手：下发一次 stop 广播确认链路畅通（参考页做法），失败静默不阻塞连接
+    this.enqueueWrite(encodeBroadcast(driveBroadcast('S')), '握手', true).catch(() => {});
     this.callbacks.onState('connected', device.name ?? 'ESP32 小车');
+    this.startKeepAlive();
+  }
+
+  /** 启动心跳保活：连接空闲时持续发送 ping，使链路 supervision 计时器不会超时。 */
+  private startKeepAlive() {
+    this.stopKeepAlive();
+    this.keepAliveTimer = setInterval(() => {
+      if (this.userDisconnected || !this.txChar) return;
+      this.ping().catch(() => {});
+    }, 1500);
+  }
+
+  /** 停止心跳保活。 */
+  private stopKeepAlive() {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
   }
 
   private handleData = (event: Event) => {
@@ -145,6 +174,7 @@ export class BleController {
 
   private handleDisconnect = () => {
     this.cleanupChars();
+    this.stopKeepAlive();
     if (this.userDisconnected) {
       this.callbacks.onState('disconnected', '已主动断开');
       return;
@@ -173,29 +203,45 @@ export class BleController {
     }, delay);
   }
 
-  /** 把完整帧写入 TX 特征（优先 writeWithoutResponse，失败回退 write）。 */
-  private async writeFrame(data: Uint8Array, errLabel: string): Promise<void> {
+  /**
+   * 把一次写入排入串行链（参考页的 sendInProgress 锁等价于此）：
+   * 后续写入会等前一个写入完成后再执行，绝不并发。
+   * silent=true 时不弹错误状态（用于连接握手等可失败的探测）。
+   */
+  private enqueueWrite(data: Uint8Array, errLabel: string, silent = false): Promise<void> {
+    const run = this.writeChain.then(() => this.performWrite(data, errLabel, silent));
+    // 吸收异常，避免链断裂导致后续写入永久卡住
+    this.writeChain = run.catch(() => {});
+    return run;
+  }
+
+  /** 串行链上的真正写入：失败最多重试 3 次（间隔 100ms），对标参考页 write_loop。 */
+  private async performWrite(data: Uint8Array, errLabel: string, silent = false): Promise<void> {
     if (!this.txChar) {
-      this.callbacks.onState('error', '未连接，无法下发指令');
+      // 仅打印，不把全局 store 改成 error：连接并未断开，只是此条指令来不及发。
+      // 否则会污染 useBluetoothStore 的 state，使 UI 误报「断开」（历史 bug 根因之一）。
+      if (!silent) console.warn('[BLE] 未连接，丢弃指令：', errLabel);
       return;
     }
+    if (this.userDisconnected) return;
     // 写值期望 BufferSource；Uint8Array<ArrayBufferLike> 与 ArrayBuffer 在 TS 5.7+ 下
     // 不完全兼容，这里做一次断言以通过类型检查（运行时即为普通 ArrayBuffer）。
     const buf = data as unknown as BufferSource;
-    try {
-      if (this.txChar.properties.writeWithoutResponse) {
-        await this.txChar.writeValueWithoutResponse(buf);
-      } else {
-        await this.txChar.writeValue(buf);
-      }
-    } catch {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await this.txChar.writeValueWithoutResponse(buf);
+        if (this.txChar.properties.writeWithoutResponse) {
+          await this.txChar.writeValueWithoutResponse(buf);
+        } else {
+          await this.txChar.writeValue(buf);
+        }
+        return;
       } catch (e) {
-        this.callbacks.onState('error', errLabel + '失败');
-        void e;
+        if (this.userDisconnected) return;
+        console.warn('[BLE] 写入失败，重试', attempt + 1, e);
+        await new Promise((r) => setTimeout(r, 100));
       }
     }
+    if (!silent) console.warn('[BLE] 指令发送失败（已重试）：', errLabel);
   }
 
   /**
@@ -209,7 +255,7 @@ export class BleController {
     if (now < this.writeThrottleUntil) return; // 简单节流避免刷屏
     this.writeThrottleUntil = now + 60;
     void speed;
-    await this.writeFrame(encodeBroadcast(driveBroadcast(cmd)), '指令发送');
+    await this.enqueueWrite(encodeBroadcast(driveBroadcast(cmd)), '指令发送');
   }
 
   /**
@@ -217,22 +263,22 @@ export class BleController {
    * 通过 0x1B 广播帧下发给板子，板子用 `when I receive <标签>` 响应。
    */
   async sendText(text: string): Promise<void> {
-    await this.writeFrame(encodeBroadcast(text), '标签发送');
+    await this.enqueueWrite(encodeBroadcast(text), '标签发送');
   }
 
   /** 停止全部任务（0x06 短消息）。紧急停车用。 */
   async stopAll(): Promise<void> {
-    await this.writeFrame(encodeShort(OP.STOP_ALL, 0), '停止全部');
+    await this.enqueueWrite(encodeShort(OP.STOP_ALL, 0), '停止全部');
   }
 
   /** 启动全部任务（0x05 短消息）。 */
   async startAll(): Promise<void> {
-    await this.writeFrame(encodeShort(OP.START_ALL, 0), '启动全部');
+    await this.enqueueWrite(encodeShort(OP.START_ALL, 0), '启动全部');
   }
 
   /** 心跳探测（0x1A 短消息），板子应回 Ping。 */
   async ping(): Promise<void> {
-    await this.writeFrame(encodePing(0), '心跳');
+    await this.enqueueWrite(encodePing(0), '心跳');
   }
 
   /** 主动断开 */
@@ -247,6 +293,7 @@ export class BleController {
     } catch {
       /* ignore */
     }
+    this.stopKeepAlive();
     this.cleanupChars();
     this.feedbackParser.reset();
     this.callbacks.onState('disconnected', '已主动断开');
