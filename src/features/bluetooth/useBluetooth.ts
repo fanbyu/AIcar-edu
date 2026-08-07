@@ -23,8 +23,17 @@ function getController(): BleController {
       onState: (s: BleState, info?: string) => useBluetoothStore.getState().setState(s, info),
       onTelemetry: (t) => useBluetoothStore.getState().setTelemetry(t),
       onReconnecting: (ms) => useBluetoothStore.getState().setReconnecting(ms),
+      onReconnectFailed: () => useBluetoothStore.getState().setNeedsRescan(true),
       onFeedback: (msg: BoardMessage) => useBluetoothStore.getState().pushFeedback(msg),
     });
+    // 用持久化的开关初始化控制器
+    const s = useBluetoothStore.getState();
+    controllerSingleton.setEchoEnabled(s.echoEnabled);
+    controllerSingleton.setIsolationEnabled(s.isolationEnabled);
+    controllerSingleton.setKeepAliveEnabled(s.keepAliveEnabled);
+    controllerSingleton.setTxGapMs(s.txGapMs);
+    // 订阅待发队列长度 → store，供 UI 显示
+    controllerSingleton.onQueueChange((n) => useBluetoothStore.getState().setTxQueueLen(n));
   }
   return controllerSingleton;
 }
@@ -45,8 +54,14 @@ export function useBluetooth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const scanAndConnect = useCallback(() => getController().scanAndConnect(), []);
-  const reconnect = useCallback(() => getController().reconnectLast(), []);
+  const scanAndConnect = useCallback(() => {
+    useBluetoothStore.getState().setNeedsRescan(false);
+    getController().scanAndConnect();
+  }, []);
+  const reconnect = useCallback(() => {
+    useBluetoothStore.getState().setNeedsRescan(false);
+    getController().reconnectLast();
+  }, []);
   const disconnect = useCallback(() => {
     getController().disconnect();
     useBluetoothStore.getState().setReconnecting(null);
@@ -63,6 +78,23 @@ export function useBluetooth() {
   const startAll = useCallback(() => getController().startAll(), []);
   /** 心跳探测 */
   const ping = useCallback(() => getController().ping(), []);
+  /** ===== 流控开关 ===== */
+  const setEchoEnabled = useCallback((v: boolean) => {
+    getController().setEchoEnabled(v);
+    useBluetoothStore.getState().setEchoEnabled(v);
+  }, []);
+  const setIsolationEnabled = useCallback((v: boolean) => {
+    getController().setIsolationEnabled(v);
+    useBluetoothStore.getState().setIsolationEnabled(v);
+  }, []);
+  const setKeepAliveEnabled = useCallback((v: boolean) => {
+    getController().setKeepAliveEnabled(v);
+    useBluetoothStore.getState().setKeepAliveEnabled(v);
+  }, []);
+  const setTxGapMs = useCallback((ms: number) => {
+    getController().setTxGapMs(ms);
+    useBluetoothStore.getState().setTxGapMs(ms);
+  }, []);
 
   return {
     ...store,
@@ -75,5 +107,9 @@ export function useBluetooth() {
     stopAll,
     startAll,
     ping,
+    setEchoEnabled,
+    setIsolationEnabled,
+    setKeepAliveEnabled,
+    setTxGapMs,
   };
 }

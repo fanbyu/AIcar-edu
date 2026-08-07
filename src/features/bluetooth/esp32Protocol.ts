@@ -38,16 +38,27 @@ export const NUS_SERVICE = MICROBLOCKS_SERVICE;
 export const NUS_TX_CHAR = MICROBLOCKS_RX_CHAR;
 export const NUS_RX_CHAR = MICROBLOCKS_TX_CHAR;
 
-/** 指令：前进/左转/右转/停止（内部枚举；实际下发的广播名见 driveBroadcast）。 */
-export type CarCommand = 'F' | 'L' | 'R' | 'S';
+/** 指令：8 方向 + 停止 + 原地左转/右转（内部枚举；实际下发的字符即广播名）。 */
+export type CarCommand = 'F' | 'B' | 'L' | 'R' | 'RF' | 'RB' | 'LF' | 'LB' | 'S' | 'TL' | 'TR';
 
 /**
  * 把内部指令映射为下发给板子的广播名（MicroBlocks `when I receive` 监听的单词）。
- * 与官方参考页一致：go / left / right / stop（另支持 back / kick）。
+ * 占位：MicroBlocks 原生仅 go/left/right/stop/back/kick，对角线方向用组合单词；
+ * 真实广播名请在 esp32Protocol.local.ts 覆写。
  */
 export function driveBroadcast(cmd: CarCommand): string {
   if (local.driveBroadcast) return local.driveBroadcast(cmd);
-  return cmd === 'F' ? 'go' : cmd === 'L' ? 'left' : cmd === 'R' ? 'right' : 'stop';
+  switch (cmd) {
+    case 'F': return 'go';
+    case 'B': return 'back';
+    case 'L': return 'left';
+    case 'R': return 'right';
+    case 'LF': return 'forwardleft';
+    case 'RF': return 'forwardright';
+    case 'LB': return 'backleft';
+    case 'RB': return 'backright';
+    default: return 'stop';
+  }
 }
 
 export interface CarTelemetry {
@@ -59,7 +70,7 @@ export interface CarTelemetry {
 
 export function encodeCommand(cmd: CarCommand, speed?: number): string {
   if (local.encodeCommand) return local.encodeCommand(cmd, speed);
-  // 占位：仅示意，不含真实帧格式
+  // 占位：仅示意，不含真实帧格式（下发字符 + 换行）
   return `${cmd}\n`;
 }
 
@@ -74,14 +85,24 @@ export function encodeLabel(label: string, score?: number): string {
   return `${label}\n`;
 }
 
-export function driveCommandToLabel(cmd: CarCommand): 'Forward' | 'Left' | 'Right' | 'Stop' {
+export function driveCommandToLabel(cmd: CarCommand): string {
   if (local.driveCommandToLabel) return local.driveCommandToLabel(cmd);
-  return cmd === 'F' ? 'Forward' : cmd === 'L' ? 'Left' : cmd === 'R' ? 'Right' : 'Stop';
+  const map: Record<CarCommand, string> = {
+    F: 'Forward', B: 'Backward', L: 'Left', R: 'Right',
+    LF: 'Forward-Left', RF: 'Forward-Right', LB: 'Back-Left', RB: 'Back-Right', S: 'Stop',
+    TL: 'Turn-Left', TR: 'Turn-Right',
+  };
+  return map[cmd];
 }
 
 export function carClassToEn(zh: string): string {
   if (local.carClassToEn) return local.carClassToEn(zh);
-  return zh === '前进' ? 'Forward' : zh === '左' ? 'Left' : zh === '右' ? 'Right' : zh === '停' ? 'Stop' : zh;
+  const map: Record<string, string> = {
+    '前进': 'Forward', '后退': 'Backward', '左': 'Left', '右': 'Right',
+    '左前': 'Forward-Left', '右前': 'Forward-Right', '左后': 'Back-Left', '右后': 'Back-Right',
+    '停': 'Stop',
+  };
+  return map[zh] ?? zh;
 }
 
 export function decodeTelemetry(raw: string): CarTelemetry | null {
@@ -92,7 +113,14 @@ export function decodeTelemetry(raw: string): CarTelemetry | null {
 
 export const COMMAND_LABELS: Record<CarCommand, string> = local.COMMAND_LABELS ?? {
   F: '前进',
-  L: '左转',
-  R: '右转',
+  B: '后退',
+  L: '左移',
+  R: '右移',
+  RF: '右前',
+  RB: '右后',
+  LF: '左前',
+  LB: '左后',
   S: '停止',
+  TL: '左转',
+  TR: '右转',
 };

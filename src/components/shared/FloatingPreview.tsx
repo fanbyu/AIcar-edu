@@ -5,6 +5,8 @@ interface Props {
   /** 预览框在正常流中的样式（尺寸/圆角/背景等），会应用到占位容器上 */
   className?: string;
   children: ReactNode;
+  /** 悬浮时显示在预览窗下方的操作条（如采集按钮），会跟随悬浮窗一起拖动 */
+  floatingActions?: ReactNode;
 }
 
 const FLOAT_MAX_W = 400; // 悬浮时最大宽度，避免遮挡过大
@@ -38,7 +40,7 @@ function getFloatHost(): HTMLElement {
  * 从而让悬浮窗真正相对视口定位。移动的是同一个 DOM 节点，<video>/<canvas>
  * 不会被卸载，摄像头与画面持续有效。
  */
-export function FloatingPreview({ className = '', children }: Props) {
+export function FloatingPreview({ className = '', children, floatingActions }: Props) {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [floating, setFloating] = useState(false);
@@ -169,6 +171,9 @@ export function FloatingPreview({ className = '', children }: Props) {
           </div>
         )}
         {children}
+        {shouldFloat && floatingActions && (
+          <div className="bg-slate-900/95">{floatingActions}</div>
+        )}
       </div>
     </div>
   );

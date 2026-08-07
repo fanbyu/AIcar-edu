@@ -497,7 +497,29 @@ export function KnnTrainer() {
         <Card className="lg:col-span-3">
           <h2 className="font-semibold text-slate-800">① 采集图片（每类数十张即可）</h2>
           <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
-            <FloatingPreview className="relative w-full shrink-0 overflow-hidden rounded-xl bg-slate-900 sm:w-80 lg:w-96">
+            <FloatingPreview
+              className="relative w-full shrink-0 overflow-hidden rounded-xl bg-slate-900 sm:w-80 lg:w-96"
+              floatingActions={
+                <div className="flex items-center gap-1.5 px-2 py-1.5">
+                  <span className="shrink-0 text-[10px] font-medium text-white/60">采集</span>
+                  {CLASSES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => captureForClass(c)}
+                      className={cn(
+                        'flex-1 rounded-md px-1 py-1.5 text-xs font-semibold text-white transition',
+                        flash?.label === c
+                          ? 'bg-emerald-500 ring-2 ring-emerald-300'
+                          : 'bg-white/10 hover:bg-white/20 active:bg-white/30'
+                      )}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              }
+            >
               <div className="aspect-video">
                 <video ref={camera.videoRef} className="h-full w-full object-cover" muted playsInline />
               </div>

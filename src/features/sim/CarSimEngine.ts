@@ -60,19 +60,29 @@ export class CarSimEngine {
 
   private step() {
     const { speed, steer, laneFollow } = this.params;
+    // 解析指令：throttle>0 前进、<0 后退；turn<0 左转、>0 右转
+    let throttle = 0;
     let turn = 0;
-    if (this.car.cmd === 'L') turn = -steer;
-    else if (this.car.cmd === 'R') turn = steer;
-    else if (this.car.cmd === 'F') turn = 0;
-    // 自动循迹：根据与车道中心的偏差微调
-    if (laneFollow && this.car.cmd === 'F') {
-      const err = (this.laneCenter - this.car.y) / 200;
-      turn = Math.max(-steer, Math.min(steer, err * steer));
+    switch (this.car.cmd) {
+      case 'F': throttle = 1; break;
+      case 'B': throttle = -1; break;
+      case 'L': turn = -1; break;
+      case 'R': turn = 1; break;
+      case 'LF': throttle = 1; turn = -1; break;
+      case 'RF': throttle = 1; turn = 1; break;
+      case 'LB': throttle = -1; turn = -1; break;
+      case 'RB': throttle = -1; turn = 1; break;
+      case 'S': default: throttle = 0; turn = 0;
     }
-    if (this.car.cmd !== 'S') {
-      this.car.angle += turn * 0.08;
-      this.car.x += Math.cos(this.car.angle) * speed;
-      this.car.y += Math.sin(this.car.angle) * speed * 0.6;
+    // 自动循迹：仅在前进时根据与车道中心的偏差微调转向
+    if (laneFollow && throttle > 0) {
+      const err = (this.laneCenter - this.car.y) / 200;
+      turn = Math.max(-1, Math.min(1, turn + err));
+    }
+    if (throttle !== 0) {
+      this.car.angle += turn * steer * 0.08;
+      this.car.x += Math.cos(this.car.angle) * speed * throttle;
+      this.car.y += Math.sin(this.car.angle) * speed * throttle * 0.6;
     }
     // 环绕边界
     if (this.car.x > this.canvas.width) this.car.x = 0;

@@ -28,6 +28,59 @@ npm run download:yolo-model
 npm run download:yolo-world
 ```
 
+## 部署与自定义域名
+
+本项目部署在 **CloudBase 静态网站托管**（不是 CVM 云服务器）。生产构建产物 `dist/` 通过
+CloudBase CLI 上传到环境 `cloud1-2gdgwiz697e3db93`（腾讯云账号 AppID `1304139990`）。
+
+### 构建环境要求（重要）
+
+构建工具链 **Vite 5 需要 Node 18+**。本机默认 `node` 是 v16，直接 `npm run build` 会报错：
+
+```
+TypeError: crypto$2.getRandomValues is not a function
+```
+
+解决方案（任选其一）：
+- 使用本机已解压的 Node 22：`C:\Users\HP\.workbuddy\binaries\node\versions\22.22.2`
+  （加到 PATH 最前面后，`node -v` 应为 v18+）；
+- 或安装 Node 18+（推荐 nvm / nvm-windows 管理，`nvm use 20`）。
+
+### 部署命令（「同步 / 发布」即指此步）
+
+CloudBase CLI 的 `tcb` 未全局安装，用 `npx` 显式指定包运行（确保使用 Node 18+）：
+
+```powershell
+# 1) 切到 Node 18+ 的环境（本机示例）
+$env:PATH = "C:\Users\HP\.workbuddy\binaries\node\versions\22.22.2;$env:PATH"
+
+# 2) 构建
+cd d:\实验室\智能小车边缘计算
+npm run build
+
+# 3) 上传到静态托管
+npx -y -p @cloudbase/cli tcb hosting deploy dist -e cloud1-2gdgwiz697e3db93
+```
+
+部署后默认访问地址：
+`https://cloud1-2gdgwiz697e3db93-1304139990.tcloudbaseapp.com/#/`
+（HashRouter + `base='/'` 已适配根域名托管，代码无需改动。）
+
+### 绑定自定义域名 fanscar.cn
+
+1. **域名激活**：`fanscar.cn` 注册后注册局需 1–2 个工作日恢复，期间无法做 DNS 解析。
+2. **ICP 备案（强制）**：`.cn` 必须完成 ICP 备案才能指向大陆节点（ap-shanghai），否则无法访问。
+   在腾讯云备案系统提交（需实名已完成 + 托管环境 `cloud1-2gdgwiz697e3db93` + 主体信息），约 1–2 周，免费。
+3. **控制台添加域名**：云开发控制台 → 环境 `cloud1-2gdgwiz697e3db93` → 静态网站托管 → 自定义域名 → 添加 `fanscar.cn`。
+   控制台会给出一个 **CNAME 目标地址**。
+4. **DNS 解析**：到 DNSPod（域名在腾讯云注册，DNS 默认在此）→ 给 `fanscar.cn` 加 CNAME 记录
+   `@` → 第 3 步的目标（如需 `www` 也加一条）。
+5. **证书签发**：CloudBase 自动校验域名所有权并签发 SSL 证书（需域名已激活且 DNS 生效，几分钟到几小时）。
+6. 生效后访问 `http://fanscar.cn`（自动跳 HTTPS）。
+
+> 注意：添加自定义域名 **不会删除** 默认域名 `*.tcloudbaseapp.com`，后者始终保留可用；
+> 添加期间及之前请继续用默认域名访问。
+
 ## 开源协议
 
 本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0-or-later）**。

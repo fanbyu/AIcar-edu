@@ -1,0 +1,102 @@
+module main
+  author '智能小车课程'
+  version 1 0
+  description 'ESP32 智能小车蓝牙示例项目（需先加载官方 BLE Serial 库，再打开本文件）'
+  variables
+    'carBuf'
+    'carCmd'
+    'carSpeed'
+    'carLabel'
+    'carScore'
+  script 40 40 {
+    when started
+    forever {
+      if (BLE Serial Connected) {
+        set carBuf (join carBuf (BLE Serial Read String))
+        处理缓冲
+      }
+    }
+  }
+  script 40 260 {
+    when I receive 'carCmdReceived'
+    if ((carCmd) = 'F') { say '前进' }
+    if ((carCmd) = 'L') { say '左转' }
+    if ((carCmd) = 'R') { say '右转' }
+    if ((carCmd) = 'S') { say '停止' }
+  }
+  script 40 480 {
+    when I receive 'carLabelReceived'
+    say (join '标签:' (join carLabel (join ' 置信度:' carScore)))
+  }
+  script 40 700 {
+    when started
+    forever {
+      if (BLE Serial Connected) {
+        发送小车遥测 电量 88 速度 0 模式 'manual' 错误码 0
+        wait 1
+      }
+    }
+  }
+
+module '智能小车蓝牙' Lib
+  author '课程组'
+  version 1 0
+  description '智能小车 BLE 协议库：封装 F/L/R/S 指令、LBL: 标签广播与遥测上行'
+  spec 'h' '当收到小车指令' '当收到小车指令' '' '' 9
+  spec 'r' '小车指令' '小车指令' '' '' 9
+  spec 'r' '指令速度' '指令速度' '' '' 9
+  spec 'h' '当收到分类标签' '当收到分类标签' '' '' 9
+  spec 'r' '分类标签' '分类标签' '' '' 9
+  spec 'r' '标签置信度' '标签置信度' '' '' 9
+  spec 'r' '蓝牙已连接？' '蓝牙已连接？' '' '' 9
+  spec 'c' '发送小车遥测 电量 _ 速度 _ 模式 _ 错误码 _' '发送小车遥测 电量 _ 速度 _ 模式 _ 错误码 _' '0 0 manual 0' '' 9
+  spec 'c' '发送标签广播 标签 _ 置信度 _' '发送标签广播 标签 _ 置信度 _' 'Forward 0' '' 9
+  spec 'c' '发送文本 _' '发送文本 _' "''" '' 9
+  to '当收到小车指令' {
+    when I receive 'carCmdReceived'
+  }
+  to '小车指令' {
+    report carCmd
+  }
+  to '指令速度' {
+    report carSpeed
+  }
+  to '当收到分类标签' {
+    when I receive 'carLabelReceived'
+  }
+  to '分类标签' {
+    report carLabel
+  }
+  to '标签置信度' {
+    report carScore
+  }
+  to '蓝牙已连接？' {
+    report (BLE Serial Connected)
+  }
+  to '发送小车遥测 电量 _ 速度 _ 模式 _ 错误码 _' bat spd mode err {
+    set m 'MANUAL'
+    if ((mode) = 'auto') { set m 'AUTO' }
+    set s 'BAT:'
+    set s (join s bat)
+    set s (join s '|SPEED:')
+    set s (join s spd)
+    set s (join s '|MODE:')
+    set s (join s m)
+    set s (join s '|ERR:')
+    set s (join s err)
+    BLE Serial Write (join s (line break))
+  }
+  to '发送标签广播 标签 _ 置信度 _' label score {
+    set s 'LBL:'
+    set s (join s label)
+    set s (join s '|')
+    set s (join s score)
+    BLE Serial Write (join s (line break))
+  }
+  to '发送文本 _' text {
+    BLE Serial Write text
+  }
+  to '处理缓冲' {
+    say '（解析骨架）请按 doc/智能小车MicroBlocks蓝牙库制作指南.md 第3节，在此按 \n 切分 carBuf：区分 F/L/R/S 与 LBL: 前缀，设置 carCmd/carSpeed/carLabel/carScore，并 broadcast carCmdReceived / carLabelReceived；最后清空 carBuf'
+    set carBuf ''
+  }

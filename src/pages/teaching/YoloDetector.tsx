@@ -92,17 +92,48 @@ export function YoloDetector() {
     [promptsText]
   );
 
+  // 从 zip 压缩包里提取第一个 .onnx 模型（学生/同学训练后打包的 onnx(1).zip 等）。
+  const extractOnnxFromZip = useCallback(async (file: File): Promise<ArrayBuffer> => {
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(file);
+    const onnxEntry = Object.values(zip.files).find(
+      (f) => !f.dir && f.name.toLowerCase().endsWith('.onnx')
+    );
+    if (!onnxEntry) {
+      throw new Error('压缩包里没有找到 .onnx 模型文件');
+    }
+    return onnxEntry.async('arraybuffer');
+  }, []);
+
   const handleModelFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const buf = await file.arrayBuffer();
-      setModelBuffer(buf);
-      setModelUrl('');
-      await doLoadModel(buf, undefined);
+      setLoading(true);
+      setLoadingMsg(file.name.toLowerCase().endsWith('.zip') ? '正在解压模型…' : '正在读取模型…');
+      try {
+        const buf = file.name.toLowerCase().endsWith('.zip')
+          ? await extractOnnxFromZip(file)
+          : await file.arrayBuffer();
+        setModelBuffer(buf);
+        setModelUrl('');
+        await doLoadModel(buf, undefined);
+      } catch (err) {
+        setModelStatus('error');
+        setModelErr((err as Error).message);
+      } finally {
+        setLoading(false);
+        // 清空 input，保证再次选同一文件也能触发 onChange
+        e.target.value = '';
+      }
     },
-    [doLoadModel]
+    [doLoadModel, extractOnnxFromZip]
   );
+
+  // 赵数据快捷按钮：学生标注训练出的 best.onnx（单文件）
+  const handleZhaoModel = handleModelFile;
+  // 郝数据快捷按钮：onnx(1).zip（压缩包内含 .onnx）
+  const handleHaoModel = handleModelFile;
 
   const handleLoadModelFromUrl = useCallback(async () => {
     const url = modelUrl.trim();
@@ -312,8 +343,37 @@ export function YoloDetector() {
           />
           <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex cursor-pointer items-center rounded-md bg-brand-600 px-2.5 py-1.5 text-xs text-white">
-              选择 ONNX 文件
-              <input type="file" accept=".onnx" className="hidden" onChange={handleModelFile} />
+              上传模型（.onnx / .zip）
+              <input
+                type="file"
+                accept=".onnx,.zip"
+                className="hidden"
+                onChange={handleModelFile}
+              />
+            </label>
+            <label
+              className="inline-flex cursor-pointer items-center rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs text-white"
+              title="选择「赵数据2」目录里的 best.onnx"
+            >
+              载入赵数据模型
+              <input
+                type="file"
+                accept=".onnx"
+                className="hidden"
+                onChange={handleZhaoModel}
+              />
+            </label>
+            <label
+              className="inline-flex cursor-pointer items-center rounded-md bg-violet-600 px-2.5 py-1.5 text-xs text-white"
+              title="选择「郝数据1」目录里的 onnx(1).zip"
+            >
+              载入郝数据模型
+              <input
+                type="file"
+                accept=".zip"
+                className="hidden"
+                onChange={handleHaoModel}
+              />
             </label>
             <input
               value={modelUrl}
@@ -328,6 +388,10 @@ export function YoloDetector() {
               用默认模型
             </Button>
           </div>
+          <p className="mt-1.5 text-[11px] text-gray-400">
+            赵/郝两组数据来自同学的标注训练成果（已导出 ONNX）。类目由模型本身固定，
+            加载后检测框会直接显示其类别名（英文自动翻译、中文原样显示）。
+          </p>
           <p className="text-[11px] text-gray-400">
             开放词汇：模型将检测你写的类别（词序需与导出 ONNX 的 --custom-text 一致）。
             浏览器内**不会**执行 export_onnx.py（需 PyTorch）；请上传已导出的 .onnx，或填其 URL。
@@ -521,27 +585,51 @@ export function YoloDetector() {
 
       {step === 'connect' && (
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <BluetoothPanel />
           <Card>
-            <h3 className="font-semibold">把“看到”变成“行动”</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              在「自动驾驶决策」一步开启蓝牙并连上小车，每 600ms 检测一次；
-              连接后会在实时检测中<strong>持续把当前检测推理的驾驶决策通过蓝牙广播</strong>给小车；
-              当决策变化时，会自动下发对应的运动控制指令。
-            </p>
+            <h3 className="font-semibold">实时画面 + 自动驾驶下发</h3>
+            <FloatingPreview className="relative mt-2 w-full overflow-hidden rounded-lg">
+              <canvas
+                ref={canvasRef}
+                className="w-full rounded-lg bg-black"
+                style={{ aspectRatio: '3 / 2' }}
+              />
+            </FloatingPreview>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" onClick={handleStartLive}>
+                {liveTimer.current ? '实时决策中…（再点停止）' : '开启摄像头并决策'}
+              </Button>
+              {liveTimer.current && (
+                <Button size="sm" variant="ghost" onClick={handleStopLive}>
+                  停止
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={bluetooth.scanAndConnect}
+                disabled={bluetooth.state === 'connected'}
+              >
+                {bluetooth.state === 'connected' ? '小车已连接' : '连接小车'}
+              </Button>
+            </div>
             <p className="mt-3 text-sm text-slate-600">
-              建议先用「示例场景」确认决策方向正确，再切到实时摄像头，并始终把车放在安全区域调试。
+              开启后每 600ms 检测一次；连上小车会<strong>持续把当前驾驶决策通过蓝牙广播</strong>，
+              决策变化时自动下发运动指令。建议先用「示例场景」确认方向正确，再开实时摄像头，并把车放在安全区调试。
             </p>
             {bluetooth.state === 'connected' ? (
               <p className="mt-3 text-xs text-green-600">
-                已连接小车：运动指令按变化下发，分类标签持续广播（当前：{lastSentLabel ?? '—'}）。
+                已连接小车：运动指令按变化下发，最近下发——{lastSentLabel ?? '—'}
               </p>
             ) : (
               <p className="mt-3 text-xs text-amber-600">
-                未连接：请先在左侧「连接小车」中配对蓝牙，再到「自动驾驶决策」开启实时检测。
+                未连接：点击「连接小车」配对蓝牙后，实时检测会自动下发指令。
               </p>
             )}
           </Card>
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-400">小车蓝牙连接（Web Bluetooth）</p>
+            <BluetoothPanel />
+          </div>
         </div>
       )}
     </div>

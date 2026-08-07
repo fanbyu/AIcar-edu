@@ -25,3 +25,7 @@ public/models/
 
 # 蓝牙私有协议（真实 ESP32 固件契约，不纳入公开仓库）
 src/features/bluetooth/esp32Protocol.local.ts
+
+# 本地备份与数据集（不纳入源码仓库）
+backup/
+yolo数据/

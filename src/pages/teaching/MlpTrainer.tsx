@@ -24,12 +24,13 @@ import JSZip from 'jszip';
 
 const STEPS = ['采集', '训练', '验证', '连接小车'];
 
-/** 推理结果展示顺序（英文标签 + 对应中文类别） */
+// 推理概率面板的展示顺序与标签，与 KNN 训练页（前进/左/右/停）保持一致；
+// en 仅作为 React key，不再展示英文指令名。
 const PROB_ORDER: { zh: CarClass; en: string }[] = [
-  { zh: '停', en: 'stop' },
-  { zh: '前进', en: 'go' },
+  { zh: '前进', en: 'forward' },
   { zh: '左', en: 'left' },
   { zh: '右', en: 'right' },
+  { zh: '停', en: 'stop' },
 ];
 
 /** 可选的 MobileNet 版本（version + alpha） */
@@ -390,6 +391,11 @@ export function MlpTrainer() {
     }
     setTraining(true);
     setWarn(null);
+    // 训练前清空上一次的「图像显示 + 推理结果」，只保留本次训练的损失/正确率曲线
+    setChart([]);
+    setPred(null);
+    setPredAll(null);
+    setEpoch(0);
     try {
       // 切换 MobileNet 版本/截断层后，已存特征维度可能与当前模型输入不一致，
       // 训练前先自检：不一致则用当前模型对所有已存图片重新提取，避免形状不匹配报错。
@@ -1059,7 +1065,7 @@ export function MlpTrainer() {
                   return (
                     <div key={en} className="mt-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-slate-600">{en}</span>
+                        <span className="font-medium text-slate-600">{zh}</span>
                         <span className="tabular-nums text-slate-500">{(p * 100).toFixed(1)}%</span>
                       </div>
                       <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
