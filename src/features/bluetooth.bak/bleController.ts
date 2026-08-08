@@ -45,19 +45,16 @@ const MAX_RECONNECT_ATTEMPTS = 8;
 
 /** 两条下行广播（长消息 0x1B）之间的最小间隔（ms）。MicroBlocks 板子接收缓冲有限，
  *  相邻广播必须留出充分时间让其取走/分发，否则缓冲溢出直接断链。
- *  90ms ≈ 11 条/秒，远超手动点击与常规视觉识别标签速率，且远低于板子消费能力。 */
-const MIN_TX_GAP_MS = 90;
+ *  60ms ≈ 16 条/秒，远超手动点击与常规视觉识别标签速率，且远低于板子消费能力。 */
+const MIN_TX_GAP_MS = 60;
 /** 等待板子广播回显（ACK）的超时（ms）。板子收到广播后会原样回显作为 ACK；
  *  超时仍未收到（固件未启用回显 / 板子正忙）则保守放行，下一条仍受 MIN_TX_GAP_MS 节流，
  *  绝不因「不等回显就猛发」堆满板子缓冲——这是「点快了 / 视觉识别高频广播不断连」的关键。 */
-const ACK_TIMEOUT_MS = 700;
+const ACK_TIMEOUT_MS = 1000;
 /** 相同识别标签的去重窗口（ms），见 sendText。 */
 const LABEL_DEDUP_MS = 400;
 /** 相同运动指令的去重窗口（ms），见 send()：视觉识别逐帧触发同一指令时压缩下发节奏。 */
 const CMD_DEDUP_MS = 120;
-/** 硬换向隔离拍的最小间隔（ms）：切换方向时强制先发 S（停止），并等满此间隔再发新令。
- *  复刻「F→S→B」稳定模式：板子收到持续运动广播后处于占用态，未复位直接接下一运动指令会冲突/断链。 */
-const ISOLATION_GAP_MS = 350;
 
 /**
  * GATT 控制器：封装 Web Bluetooth 扫描 / 连接 / 写指令 / notify / 断开 / 指数退避重连。
@@ -73,7 +70,6 @@ export class BleController {
   private userDisconnected = false;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingReconnect: (() => void) | null = null;
   /** 重连/连接流程进行中：用于去重，避免写失败与断连事件并发触发多次重连。 */
   private linkBusy = false;
   /** 断连事件去抖：gattserverdisconnected 可能重复触发，同一轮只处理一次。 */
@@ -97,8 +93,6 @@ export class BleController {
   private feedbackParser = new FrameParser();
   /** 心跳保活定时器：连接期间周期性 ping，防止空闲/推理间隙 supervision timeout 断连。 */
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
-  /** 最近一次业务写时间，用于心跳保活「静止窗口」：仅当链路空闲较久才补 ping，避免与业务写抢道。 */
-  private lastWriteAt = 0;
 
   /**
    * 流控相关运行时开关（由 UI 调试面板控制，持久化到 localStorage）。
@@ -226,13 +220,6 @@ export class BleController {
       // 协商高优先级连接参数（最短连接间隔），对标参考页「实时控制 15–40ms」，
       // 显著降低 supervision timeout 造成的空闲断连。桌面 Chrome 可能不支持，静默忽略。
       this.requestHighPriority().catch(() => {});
-      // 连接刚建立，链路忙结束：把挂起的重连尝试调度出去（若有），
-      // 解决「linkBusy 时重连被吞、永远不再重连」的死锁。
-      if (this.pendingReconnect) {
-        const r = this.pendingReconnect;
-        this.pendingReconnect = null;
-        r();
-      }
     } finally {
       this.linkBusy = false;
     }
@@ -257,8 +244,7 @@ export class BleController {
 
   /** 启动心跳保活：连接空闲时持续发送 ping，使链路 supervision 计时器不会超时；
    *  同时轮询 server.connected，若链路已静默失效（gattserverdisconnected 未及时触发）则主动重连。
-   *  受 keepAliveEnabled 开关控制：关掉后完全不发 ping（用于排查 ping 是否引起断连）。
-   *  采用「静止窗口」：仅当最近一次业务写距今超过 STILL_MS 才补 ping，避免 ping 与业务写抢道/叠加。 */
+   *  受 keepAliveEnabled 开关控制：关掉后完全不发 ping（用于排查 ping 是否引起断连）。 */
   private startKeepAlive() {
     this.stopKeepAlive();
     if (!this.keepAliveEnabled) return;
@@ -268,8 +254,6 @@ export class BleController {
         this.triggerReconnect('链路疑似中断，正在重连…');
         return;
       }
-      // 静止窗口：连接空闲较久才补 ping，避免与正常业务写互相抢道。
-      if (Date.now() - this.lastWriteAt < 1500) return;
       this.ping().catch(() => {});
     }, 1500);
   }
@@ -311,7 +295,7 @@ export class BleController {
   };
 
   private handleDisconnect = () => {
-    this.cleanupLinkState();
+    this.cleanupChars();
     this.stopKeepAlive();
     if (this.userDisconnected) {
       this.callbacks.onState('disconnected', '已主动断开');
@@ -324,26 +308,9 @@ export class BleController {
     this.triggerReconnect('连接断开，正在尝试重连…');
   };
 
-  /** 清理链路相关特征/监听/待发状态（断连或主动断开时调用）。 */
-  private cleanupLinkState() {
-    if (this.rxChar) {
-      this.rxChar.removeEventListener('characteristicvaluechanged', this.handleData);
-    }
-    // 断开时释放可能正在等待回显的命令，避免写链卡住
-    this.clearAck();
-    this.cleanupChars();
-  }
-
   /** 主动触发一次指数退避重连（去重 + 链路忙判定），供断连事件与写失败/保活探测复用。 */
   private triggerReconnect(reason = '连接异常，正在尝试重连…'): void {
-    if (this.userDisconnected) return;
-    if (this.reconnectTimer) return;
-    if (this.linkBusy) {
-      // 链路正忙（连接/重连流程中）：挂起一次重连，待流程结束（connectTo 末尾）再补调度，
-      // 否则重连请求会被直接吞掉，导致「永远不再重连」的死锁。
-      if (!this.pendingReconnect) this.pendingReconnect = () => this.triggerReconnect(reason);
-      return;
-    }
+    if (this.userDisconnected || this.reconnectTimer || this.linkBusy) return;
     this.callbacks.onState('disconnected', reason);
     this.scheduleReconnect();
   }
@@ -393,7 +360,6 @@ export class BleController {
   ): Promise<void> {
     const run = this.writeChain.then(async () => {
       const t0 = Date.now();
-      this.lastWriteAt = t0;
       const waitEcho = expectEcho !== null && this.echoEnabled;
       const ack = waitEcho ? this.installAck(expectEcho) : null;
       await this.performWrite(data, errLabel, silent);
@@ -526,7 +492,7 @@ export class BleController {
     // 方向切换隔离拍（受 isolationEnabled 开关控制）：用户实测「F 后直接 B」会断连，但「F→S→B」稳定。
     // 根因是 MicroBlocks 板子收到持续运动广播后处于占用态，未复位就直接接下一个运动指令会冲突/异常断链；
     // 因此在发送任一「非停止的新运动指令」前，若上一条不是停止，先下发 S(停止) 隔离拍，复刻 F→S→B 稳定模式。
-    // 隔离拍不等待回显（silent），仅靠串行写链顺序保证 S 先于当前指令到达板子；并等满 ISOLATION_GAP_MS 再发新令。
+    // 隔离拍不等待回显（silent），仅靠串行写链顺序保证 S 先于当前指令到达板子。
     const needIsolation =
       this.isolationEnabled &&
       cmd !== 'S' &&
@@ -535,11 +501,6 @@ export class BleController {
       cmd !== this.lastCommand;
     if (needIsolation) {
       await this.enqueueWrite(encodeBroadcast('S'), '切换隔离-停止', true);
-      // 隔离拍后强制等待，确保板子完成停止复位再接新运动指令
-      if (now - 0 < ISOLATION_GAP_MS) {
-        // 仅在距离上一次写超过阈值时补等；这里统一用一个短延时让 S 真正生效
-      }
-      await this.isolationSettle();
     }
     // 短窗口去重：相同指令短时间重复（识别抖动/逐帧触发）丢弃，降低下行压力，避免队列积压。
     if (cmd === this.lastCommand && now - this.lastCommandAt < CMD_DEDUP_MS) {
@@ -551,11 +512,10 @@ export class BleController {
     await this.enqueueWrite(encodeBroadcast(cmd), '指令发送', false, cmd);
   }
 
-  /** 隔离拍沉降：等待 ISOLATION_GAP_MS，让停止拍真正被板子处理完。 */
-  private isolationSettle(): Promise<void> {
-    return this.delay(ISOLATION_GAP_MS);
-  }
-
+  /**
+   * 发送图像识别类别标签（如 person/car…）：以 MicroBlocks 广播帧下发，
+   * 板子用 `when I receive <label>` 响应。同样走长消息回显流控。
+   */
   /**
    * 发送图像识别类别标签（如 person/car…）：以 MicroBlocks 广播帧下发，板子用 `when I receive <label>` 响应。
    * 视觉识别会产生高频、不可控的标签广播，这里做两层防护防止断连：
@@ -594,7 +554,6 @@ export class BleController {
   disconnect(): void {
     this.userDisconnected = true;
     this.disconnecting = false;
-    this.pendingReconnect = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -605,7 +564,7 @@ export class BleController {
       /* ignore */
     }
     this.stopKeepAlive();
-    this.cleanupLinkState();
+    this.cleanupChars();
     this.feedbackParser.reset();
     this.cmdQueue = [];
     this.emitQueue();
@@ -613,10 +572,10 @@ export class BleController {
   }
 
   private cleanupChars() {
-    // 仅释放写特征引用；rxChar 的监听移除已在 cleanupLinkState 完成
-    this.txChar = null;
-    this.rxChar = null;
-    this.server = null;
-    this.device = null;
+    if (this.rxChar) {
+      this.rxChar.removeEventListener('characteristicvaluechanged', this.handleData);
+    }
+    // 断开时释放可能正在等待回显的命令，避免写链卡住
+    this.clearAck();
   }
 }

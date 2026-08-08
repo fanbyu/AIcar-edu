@@ -175,25 +175,49 @@ export class YoloWorldBackend implements DetectorBackend {
    */
   private decode(out: ort.Tensor, opts?: DetectOptions): DetectedObject[] {
     const dims = out.dims;
-    const nc = this.classes.length;
-    const C = 4 + nc;
     const raw = out.data as Float32Array;
 
-    let pred: Float32Array;
+    // 从模型真实输出维度反推类别数，而非依赖提示词数量（模型导出时固定了类别数）。
+    // 常见两种布局都兼容：
+    //   - [1, C, A]（通道在前，C = 4 + nc）
+    //   - [1, A, C]（锚点在前）
+    const A = 8400;
+    let C: number;
     let anchors: number;
+    if (dims[1] !== A && dims[2] === A) {
+      // [1, C, A]
+      C = dims[1];
+      anchors = dims[2];
+    } else if (dims[2] !== A && dims[1] === A) {
+      // [1, A, C]
+      C = dims[2];
+      anchors = dims[1];
+    } else {
+      // 退化：用第二维反推（兜底）
+      C = dims[1];
+      anchors = dims[2];
+    }
+    const nc = Math.max(0, C - 4);
+
+    // 实际类别名：优先用提示词对齐，不足部分回退到 cls<i>。
+    const classNames =
+      nc <= this.classes.length
+        ? this.classes.slice(0, nc)
+        : [
+            ...this.classes,
+            ...Array.from({ length: nc - this.classes.length }, (_, i) => `cls${i}`),
+          ];
+
+    let pred: Float32Array;
     if (dims[1] === C) {
       // [1, C, A] -> [A, C]
-      anchors = dims[2];
       pred = new Float32Array(C * anchors);
       for (let c = 0; c < C; c++) {
         for (let a = 0; a < anchors; a++) pred[a * C + c] = raw[c * anchors + a];
       }
-    } else if (dims[2] === C) {
-      // [1, A, C]
-      anchors = dims[1];
-      pred = raw;
     } else {
-      throw new Error(`YOLO-World 输出形状异常：期望含 ${C} 通道，实际 dims=${dims}`);
+      // [1, A, C]
+      pred = raw;
     }
 
     const minScore = opts?.minScore ?? 0.25;
@@ -226,7 +250,7 @@ export class YoloWorldBackend implements DetectorBackend {
       const bw = w / scale;
       const bh = h / scale;
 
-      const className = this.classes[best];
+      const className = classNames[best] ?? `cls${best}`;
       candidates.push({
         bbox: [x, y, bw, bh],
         className,

@@ -22,10 +22,11 @@ self.onmessage = (e) => {
     return String(v);
   }
   try {
-    const fn = new Function('console', code);
-    const result = fn(sandboxConsole);
+    /*__CAR_API__*/
+    const fn = new Function('console', 'car', code);
+    const result = fn(sandboxConsole, car);
     clearTimeout(timer);
-    self.postMessage({ type: 'done', logs, result: result === undefined ? '' : fmt(result) });
+    self.postMessage({ type: 'done', logs, result: result === undefined ? '' : fmt(result), carCmd: __cmd.last });
   } catch (err) {
     clearTimeout(timer);
     self.postMessage({ type: 'error', value: err && err.message ? err.message : String(err) });
@@ -38,11 +39,28 @@ export interface RunResult {
   logs: string[];
   result: string;
   error?: string;
+  /** 代码通过 car.* 调用产生的最近一条小车指令（F/B/L/R/LF/RF/LB/RB/S） */
+  carCmd?: string;
 }
+
+const CAR_API = `
+  const __cmd = { last: null };
+  const car = {
+    forward: () => { __cmd.last = 'F'; },
+    back:    () => { __cmd.last = 'B'; },
+    left:    () => { __cmd.last = 'L'; },
+    right:   () => { __cmd.last = 'R'; },
+    forwardLeft:  () => { __cmd.last = 'LF'; },
+    forwardRight: () => { __cmd.last = 'RF'; },
+    backLeft:  () => { __cmd.last = 'LB'; },
+    backRight: () => { __cmd.last = 'RB'; },
+    stop:    () => { __cmd.last = 'S'; },
+  };
+`;
 
 export function runJs(code: string, timeout = 3000): Promise<RunResult> {
   return new Promise((resolve) => {
-    const blob = new Blob([WORKER_SRC], { type: 'application/javascript' });
+    const blob = new Blob([WORKER_SRC.replace('/*__CAR_API__*/', CAR_API)], { type: 'application/javascript' });
     const url = URL.createObjectURL(blob);
     const worker = new Worker(url);
     const done = (r: RunResult) => {
@@ -52,7 +70,7 @@ export function runJs(code: string, timeout = 3000): Promise<RunResult> {
     };
     worker.onmessage = (e) => {
       const d = e.data;
-      if (d.type === 'done') done({ logs: d.logs, result: d.result });
+      if (d.type === 'done') done({ logs: d.logs, result: d.result, carCmd: d.carCmd });
       else if (d.type === 'error') done({ logs: [], result: '', error: d.value });
     };
     worker.onerror = (e) => done({ logs: [], result: '', error: e.message });

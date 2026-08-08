@@ -23,9 +23,20 @@ export function Card({
 export function Chip({
   children,
   className,
+  active = false,
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
-  return <span className={cn('chip', className)}>{children}</span>;
+  return (
+    <span
+      onClick={onClick}
+      className={cn('chip', active && 'chip-active', onClick && 'chip-clickable', className)}
+    >
+      {children}
+    </span>
+  );
 }

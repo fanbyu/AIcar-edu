@@ -49,7 +49,19 @@ body {
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600;
+  }
+
+  .chip-active {
+    @apply bg-brand-600 text-white;
+  }
+
+  .chip-clickable {
+    @apply cursor-pointer transition hover:bg-brand-50;
+  }
+
+  .chip-active.chip-clickable {
+    @apply hover:bg-brand-600;
   }
 
   .section-title {

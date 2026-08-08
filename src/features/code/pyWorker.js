@@ -28,8 +28,24 @@ self.onmessage = async function (e) {
     const logs = [];
     pyodide.setStdout({ batched: (s) => logs.push(s) });
     pyodide.setStderr({ batched: (s) => logs.push('[err] ' + s) });
+    // 注入小车 API，便于示例代码驱动仿真
+    await pyodide.runPythonAsync(
+      'class __Car:\n' +
+      "  def forward(self): globals()['__cmd_last']='F'\n" +
+      "  def back(self): globals()['__cmd_last']='B'\n" +
+      "  def left(self): globals()['__cmd_last']='L'\n" +
+      "  def right(self): globals()['__cmd_last']='R'\n" +
+      "  def forward_left(self): globals()['__cmd_last']='LF'\n" +
+      "  def forward_right(self): globals()['__cmd_last']='RF'\n" +
+      "  def back_left(self): globals()['__cmd_last']='LB'\n" +
+      "  def back_right(self): globals()['__cmd_last']='RB'\n" +
+      "  def stop(self): globals()['__cmd_last']='S'\n" +
+      "globals()['__cmd_last']=None\n" +
+      'car=__Car()\n'
+    );
     const result = await pyodide.runPythonAsync(code);
-    self.postMessage({ type: 'done', logs, result: result == null ? '' : String(result) });
+    const carCmd = pyodide.globals.get('__cmd_last');
+    self.postMessage({ type: 'done', logs, result: result == null ? '' : String(result), carCmd: carCmd ?? undefined });
   } catch (err) {
     self.postMessage({ type: 'error', value: String((err && err.message) || err) });
   }

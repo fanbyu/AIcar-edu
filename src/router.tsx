@@ -4,6 +4,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { HomePage } from '@/pages/HomePage';
 import { TeachingPage } from '@/pages/TeachingPage';
 import { AiKnowledgePage } from '@/pages/AiKnowledgePage';
+import { KnowledgeLessonPage } from '@/pages/KnowledgeLessonPage';
 import { PlaygroundPage } from '@/pages/PlaygroundPage';
 import { CommunityPage } from '@/pages/CommunityPage';
 import { KnnTrainer } from '@/pages/teaching/KnnTrainer';
@@ -26,6 +27,7 @@ export const router = createHashRouter([
       { path: 'teaching/yolo', element: <YoloDetector /> },
       { path: 'teaching/tm', element: <AiTrainingPlatform /> },
       { path: 'knowledge', element: <AiKnowledgePage /> },
+      { path: 'knowledge/:id', element: <KnowledgeLessonPage /> },
       { path: 'playground', element: <PlaygroundPage /> },
       { path: 'community', element: <CommunityPage /> },
       { path: 'about', element: <AboutPage /> },

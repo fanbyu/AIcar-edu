@@ -10,6 +10,8 @@ export interface PyRunResult {
   result: string;
   error?: string;
   status?: string;
+  /** 代码通过 car.* 调用产生的最近一条小车指令 */
+  carCmd?: string;
 }
 
 export function runPython(code: string, timeout = 30000): Promise<PyRunResult> {
@@ -33,7 +35,7 @@ export function runPython(code: string, timeout = 30000): Promise<PyRunResult> {
         logs.push(d.value);
       } else if (d.type === 'done') {
         clearTimeout(timer);
-        finish({ logs: d.logs, result: d.result });
+        finish({ logs: d.logs, result: d.result, carCmd: d.carCmd });
       } else if (d.type === 'error') {
         clearTimeout(timer);
         finish({ logs, result: '', error: d.value });

@@ -116,3 +116,19 @@ npx -y -p @cloudbase/cli tcb hosting deploy dist -e cloud1-2gdgwiz697e3db93
 - 感谢microblocks 线上分享会 （B站）
 - TensorFlow.js、ONNX Runtime Web、Pyodide、CloudBase 等开源社区
 - 祝贺西班牙夺冠
+
+---
+
+## 部署记录
+
+| 时间 | 操作 | 说明 |
+|------|------|------|
+| 2026-08-08 | 重新部署 | 构建产物 `dist/`（70 个文件）上传至 CloudBase 静态托管，环境 `cloud1-2gdgwiz697e3db93` |
+| 2026-08-08 | 重新部署 | 构建产物 `dist/`（73 个文件）上传至 CloudBase 静态托管：含 YOLO 训练模型(yolo-trained)、COCO-SSD、YOLO-World ort-web wasm 运行时、Pyodide；含 YOLO 避障 + MLP 巡线融合页面(`/teaching/yolo`) |
+
+**部署资源：**
+- 静态托管（Hosting）：`cloud1-2gdgwiz697e3db93`
+- 前端访问地址：`https://cloud1-2gdgwiz697e3db93-1304139990.tcloudbaseapp.com/#/`
+- 使用的 CloudBase SDK：`@cloudbase/js-sdk`（匿名登录，无云函数/数据库依赖）
+
+**部署方式说明：** 本项目为纯前端 SPA，通过 IDE 内置 CloudBase 集成上传 `dist/` 到静态网站托管，等效于 `tcb hosting deploy dist -e cloud1-2gdgwiz697e3db93`。

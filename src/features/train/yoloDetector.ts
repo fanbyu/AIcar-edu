@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // 第四级「拓展」关卡：与检测引擎无关的“决策 + 讲解”逻辑。
-// 实际的检测推理已抽到 src/features/train/detectors（InferenceEngine 双后端：
-// tfjs-coco 与 ort-yolo-world），本文件只负责把检测结果映射成小车驾驶指令，
-// 以及生成无模型依赖的示例场景。
+// 实际的检测推理已抽到 src/features/train/detectors（coco-ssd / yolov8 / yolo-world），
+// 本文件只负责把检测结果映射成小车驾驶指令，以及生成无模型依赖的示例场景。
+import { DRIVE_CLASS_CMD, DRIVE_CLASS_ZH } from '@/content/trainedYoloModels';
 import type { DetectedObject, DrivingDecision } from './detectors/types';
 
 export type { DetectedObject, DrivingDecision } from './detectors/types';
@@ -73,7 +73,7 @@ const ZH: Record<string, string> = {
 };
 
 export function toZh(english: string): string {
-  return ZH[english] ?? english;
+  return DRIVE_CLASS_ZH[english] ?? ZH[english] ?? english;
 }
 
 // 高优先级“必须立刻停下”的类别（人、停车标志、红绿灯等）。
@@ -111,6 +111,24 @@ export function decideDriving(
   // 用框的高度占画面的比例粗略估计“距离远近”，超过阈值算“很近”。
   const closeRatio = 0.18;
 
+  // 0) 同学训练的封闭词汇（ting/zuo/qian/you）：检测类名即驾驶指令，取最高分框。
+  const driveHits = detections
+    .filter((d) => DRIVE_CLASS_CMD[d.className] != null && d.score >= 0.25)
+    .sort((a, b) => b.score - a.score);
+  if (driveHits.length > 0) {
+    const top = driveHits[0];
+    const command = DRIVE_CLASS_CMD[top.className]!;
+    const labelZh =
+      command === 'S' ? '停车' : command === 'F' ? '前进' : command === 'L' ? '左转' : '右转';
+    return {
+      command,
+      labelZh,
+      reason: `训练模型识别到「${top.labelZh}」（置信度 ${Math.round(top.score * 100)}%），按标注语义控车。`,
+      trigger: top,
+      source: 'drive-class',
+    };
+  }
+
   // 1) 高优先级目标：人 / 停车标志 / 红绿灯 —— 只要离得够近就停车。
   const mustStopHit = detections.find(
     (d) => MUST_STOP.has(d.className) && d.bbox[3] / frameH > closeRatio
@@ -121,6 +139,7 @@ export function decideDriving(
       labelZh: '停车',
       reason: `正前方出现“${mustStopHit.labelZh}”且距离很近，必须立刻停下确保安全。`,
       trigger: mustStopHit,
+      source: 'obstacle',
     };
   }
 
@@ -135,6 +154,8 @@ export function decideDriving(
       command: 'F',
       labelZh: '前进',
       reason: '正前方没有障碍物，安全前进。',
+      clearPath: true,
+      source: 'obstacle',
     };
   }
 
@@ -148,6 +169,7 @@ export function decideDriving(
       labelZh: '停车',
       reason: `障碍物“${nearest.d.labelZh}”正挡在路中央，先停下再判断。`,
       trigger: nearest.d,
+      source: 'obstacle',
     };
   }
   if (boxCenterX < centerX) {
@@ -157,6 +179,7 @@ export function decideDriving(
       labelZh: '右转',
       reason: `左侧有“${nearest.d.labelZh}”，向右转绕开它。`,
       trigger: nearest.d,
+      source: 'obstacle',
     };
   }
   // 障碍在右 → 向左绕开
@@ -165,6 +188,7 @@ export function decideDriving(
     labelZh: '左转',
     reason: `右侧有“${nearest.d.labelZh}”，向左转绕开它。`,
     trigger: nearest.d,
+    source: 'obstacle',
   };
 }
 
